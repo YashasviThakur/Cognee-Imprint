@@ -999,13 +999,13 @@ function LearningPanel({ userId, onClose }: { userId: string | null; onClose: ()
 }
 
 /* ════ Connect IDE config tabs ════ */
-interface ConnectTab { id: string; name: string; color: string; platform: string; configFile: string; pathParts: string[]; format?: "json" | "toml"; manual?: boolean; }
+interface ConnectTab { id: string; name: string; color: string; platform: string; configFile: string; pathParts: string[]; format?: "json" | "toml"; manual?: boolean; hookCapture?: boolean; rulesFile?: string; rulesLoc?: string; }
 const CONNECT_TABS: ConnectTab[] = [
-  { id:"cc",  name:"Claude Code",  color:"#22d3ee", platform:"claude-code",  configFile:"~/.claude.json",                  pathParts:[".claude.json"] },
-  { id:"cur", name:"Cursor",       color:"#6ee7b7", platform:"cursor",        configFile:"~/.cursor/mcp.json",              pathParts:[".cursor","mcp.json"] },
-  { id:"cod", name:"Codex",        color:"#818cf8", platform:"codex",         configFile:"~/.codex/config.toml",            pathParts:[".codex","config.toml"], format:"toml" },
-  { id:"ag",  name:"Antigravity",  color:"#c084fc", platform:"antigravity",   configFile:"~/.gemini/config/mcp_config.json", pathParts:[".gemini","config","mcp_config.json"] },
-  { id:"oth", name:"Other IDE",    color:"#9ca3af", platform:"custom",        configFile:"your IDE's MCP config file",       pathParts:[], manual:true },
+  { id:"cc",  name:"Claude Code",  color:"#22d3ee", platform:"claude-code",  configFile:"~/.claude.json",                  pathParts:[".claude.json"], hookCapture:true },
+  { id:"cur", name:"Cursor",       color:"#6ee7b7", platform:"cursor",        configFile:"~/.cursor/mcp.json",              pathParts:[".cursor","mcp.json"], rulesFile:".cursor/rules/imprint.mdc", rulesLoc:"in your project, or paste into Cursor → Settings → Rules → User Rules" },
+  { id:"cod", name:"Codex",        color:"#818cf8", platform:"codex",         configFile:"~/.codex/config.toml",            pathParts:[".codex","config.toml"], format:"toml", rulesFile:"AGENTS.md", rulesLoc:"in your project root" },
+  { id:"ag",  name:"Antigravity",  color:"#c084fc", platform:"antigravity",   configFile:"~/.gemini/config/mcp_config.json", pathParts:[".gemini","config","mcp_config.json"], rulesFile:"GEMINI.md", rulesLoc:"in your project root, or Antigravity's Rules panel" },
+  { id:"oth", name:"Other IDE",    color:"#9ca3af", platform:"custom",        configFile:"your IDE's MCP config file",       pathParts:[], manual:true, rulesFile:"AGENTS.md", rulesLoc:"in your project root, or the IDE's rules/instructions setting" },
 ];
 
 // Raw URLs of the committed installer/uninstaller scripts. The dashboard no longer
@@ -1054,6 +1054,31 @@ const REMOVE_FOLDER_CMD = `node -e "const o=require('os'),p=require('path'),f=re
 // works identically in bash, zsh, PowerShell and cmd.exe — no $HOME/%USERPROFILE%
 // shell differences. Clones into ~/Cognee-Imprint to match the auto-configure path.
 const INSTALL_CMD = `node -e "const{execSync}=require('child_process'),o=require('os'),p=require('path'),f=require('fs');const d=p.join(o.homedir(),'Cognee-Imprint');if(f.existsSync(d)===false){process.chdir(o.homedir());execSync('git clone https://github.com/ayushraj-byte/Cognee-Imprint Cognee-Imprint',{stdio:'inherit'});}execSync('npm install',{cwd:p.join(d,'mcp'),stdio:'inherit'});console.log('Done. Cognee-Imprint cloned to '+d);"`;
+
+// Cross-IDE auto-save rules — the equivalent of Claude Code's Stop hook + CLAUDE.md
+// for IDEs that only have the MCP tools (Cursor/Codex/Antigravity/other). Kept
+// backtick-free so it stays inside this template literal.
+const AUTOSAVE_RULES = `# Imprint — auto-save rules (paste into your IDE's rules)
+
+You have Imprint memory tools via the "imprint" MCP server:
+get_memories, save_memory, search_memories, pin_memory, summarize_session.
+
+This IDE has no automatic capture hook (only Claude Code does), so capture memory
+proactively — do not wait for the user to say "save" or "remember this".
+
+1. Session start: call get_memories with the user's first message, then answer.
+   Use the results to personalize. Do not announce it.
+2. Save proactively: call save_memory the moment you learn a durable fact —
+   projects, decisions, progress (done / pending / next step), preferences,
+   and personal/work facts. topic = work | projects | preferences | personal |
+   health | general. One clear fact per memory.
+3. On "bye / done / stop / wrap up": save what was completed, the current state
+   (pin it), and the next step (pin it).
+4. Personal questions: call search_memories first — never answer from assumptions.
+5. Milestones: after a fix / ship / commit / deploy, save a one-line checkpoint.
+
+Never say "I'll remember that" — just save silently and continue. Do not save
+throwaway details, anything the user says to forget, or secrets.`;
 
 function ConnectIDEModal({ userId, onClose }: { userId: string | null; onClose: () => void }) {
   const [tab, setTab] = useState<number>(0);
@@ -1170,6 +1195,28 @@ function ConnectIDEModal({ userId, onClose }: { userId: string | null; onClose: 
                 • <b style={{ color:"rgba(255,255,255,0.5)" }}>mcpServers</b> JSON (above) — Cursor, Windsurf, Claude, Antigravity<br/>
                 • <b style={{ color:"rgba(255,255,255,0.5)" }}>servers</b> JSON — VS Code → <span style={{ fontFamily:"monospace" }}>.vscode/mcp.json</span><br/>
                 • <b style={{ color:"rgba(255,255,255,0.5)" }}>[mcp_servers.x]</b> TOML — Codex → <span style={{ fontFamily:"monospace" }}>~/.codex/config.toml</span>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Enable auto-save (rules file) */}
+          {ct.hookCapture ? (
+            <div style={{ padding:"11px 14px", borderRadius:11, background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.22)", fontSize:11.5, color:"rgba(255,255,255,0.5)", lineHeight:1.55 }}>
+              <b style={{ color:"#34d399" }}>Auto-save is built in.</b> Claude Code captures memory automatically via the Stop hook after every response — no rules file needed. (Add the Stop hook + CLAUDE.md from the setup docs if you haven&apos;t yet.)
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize:10.5, color:"rgba(255,255,255,0.28)", fontWeight:700, letterSpacing:"0.09em", marginBottom:4 }}>
+                STEP 3 — ENABLE AUTO-SAVE{" "}<span style={{ color:ct.color, fontFamily:"'JetBrains Mono',monospace", fontWeight:500 }}>{ct.rulesFile}</span>
+              </div>
+              <div style={{ fontSize:11.5, color:"rgba(255,255,255,0.25)", marginBottom:9, lineHeight:1.45 }}>
+                {ct.name} has no auto-capture hook, so save this as <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"rgba(255,255,255,0.4)" }}>{ct.rulesFile}</span> {ct.rulesLoc}. It tells the model to load your memories on start and save durable facts on its own — no more typing &quot;save this&quot;.
+              </div>
+              <div style={{ position:"relative" }}>
+                <pre style={{ margin:0, padding:"12px 50px 12px 14px", borderRadius:11, background:"rgba(0,0,0,0.4)", border:"1px solid rgba(255,255,255,0.07)", fontSize:10.5, fontFamily:"'JetBrains Mono','Fira Mono',monospace", lineHeight:1.65, color:"rgba(255,255,255,0.58)", whiteSpace:"pre-wrap", overflowX:"auto", maxHeight:230, overflowY:"auto" }}>{AUTOSAVE_RULES}</pre>
+                <button onClick={() => copy(AUTOSAVE_RULES, "rules")} style={{ position:"absolute", top:8, right:8, height:26, padding:"0 11px", borderRadius:7, background:copied==="rules"?"rgba(94,234,212,0.15)":"rgba(255,255,255,0.06)", border:`1px solid ${copied==="rules"?"rgba(94,234,212,0.4)":"rgba(255,255,255,0.1)"}`, color:copied==="rules"?"#5EEAD4":"rgba(255,255,255,0.45)", fontSize:10.5, fontWeight:600, fontFamily:"inherit", cursor:"pointer", transition:"all .2s" }}>
+                  {copied==="rules" ? "✓" : "Copy"}
+                </button>
               </div>
             </div>
           )}
