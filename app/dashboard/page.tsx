@@ -1582,7 +1582,7 @@ export default function Dashboard() {
   const [introFading,   setIntroFading]   = useState(false);
   const [globalSearch,  setGlobalSearch]  = useState("");
   const [asking,        setAsking]        = useState(false);
-  const [askAnswer,     setAskAnswer]     = useState<{ answer: string; sources: { content: string; topic: string; id: string }[] } | null>(null);
+  const [askAnswer,     setAskAnswer]     = useState<{ answer: string; sources: { content: string; topic: string; id: string }[]; cognee?: { used: boolean; mode: string; searchType: string | null; dataset: string; host?: string; ms: number } } | null>(null);
   const [dateFilter,    setDateFilter]    = useState("");
   const [showAddModal,  setShowAddModal]  = useState(false);
   const [newMemory,     setNewMemory]     = useState("");
@@ -2065,6 +2065,7 @@ export default function Dashboard() {
       const dec = new TextDecoder();
       let buf = "", answer = "";
       let sources: { content: string; topic: string; id: string }[] = [];
+      let cognee: { used: boolean; mode: string; searchType: string | null; dataset: string; host?: string; ms: number } | undefined;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -2076,12 +2077,13 @@ export default function Dashboard() {
           if (!line.startsWith("data:")) continue;
           try {
             const ev = JSON.parse(line.slice(5).trim());
-            if (ev.type === "sources") { sources = ev.sources || []; setAskAnswer({ answer, sources }); }
-            else if (ev.type === "delta") { answer += ev.text || ""; setAskAnswer({ answer, sources }); }
+            if (ev.type === "sources") { sources = ev.sources || []; setAskAnswer({ answer, sources, cognee }); }
+            else if (ev.type === "cognee") { cognee = ev; setAskAnswer({ answer, sources, cognee }); }
+            else if (ev.type === "delta") { answer += ev.text || ""; setAskAnswer({ answer, sources, cognee }); }
           } catch { /* ignore */ }
         }
       }
-      setAskAnswer({ answer: answer || "No answer.", sources });
+      setAskAnswer({ answer: answer || "No answer.", sources, cognee });
     } catch { setAskAnswer({ answer: "Couldn't get an answer — try again.", sources: [] }); pushToast("Ask failed — try again."); }
     setAsking(false);
   }
@@ -2317,7 +2319,17 @@ export default function Dashboard() {
                 <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
                   <span style={{ fontSize:13 }}>✨</span>
                   <span style={{ fontSize:10.5, fontWeight:700, letterSpacing:"0.07em", color:"#5EEAD4" }}>MEMORY ANSWER</span>
-                  <span style={{ fontSize:9, fontWeight:600, letterSpacing:"0.04em", color:"rgba(94,234,212,0.75)", background:"rgba(94,234,212,0.1)", border:"1px solid rgba(94,234,212,0.28)", borderRadius:999, padding:"1px 7px" }}>⚡ Cognee recall</span>
+                  {askAnswer?.cognee?.used && (() => {
+                    const cg = askAnswer.cognee!;
+                    const label = cg.mode === "graph_answer" ? "⚡ Cognee graph answer" : "⚡ Cognee recall";
+                    const detail = `${cg.searchType ? ` · ${cg.searchType}` : ""}${cg.ms != null ? ` · ${cg.ms}ms` : ""}`;
+                    return (
+                      <span title={`Retrieved via Cognee${cg.searchType ? ` · ${cg.searchType}` : ""}${cg.dataset ? ` · ${cg.dataset}` : ""}${cg.ms != null ? ` · ${cg.ms}ms` : ""}${cg.host ? ` · ${cg.host.replace(/^https?:\/\//, "")}` : ""}`}
+                        style={{ fontSize:9, fontWeight:600, letterSpacing:"0.04em", color:"rgba(94,234,212,0.75)", background:"rgba(94,234,212,0.1)", border:"1px solid rgba(94,234,212,0.28)", borderRadius:999, padding:"1px 7px" }}>
+                        {label}{detail}
+                      </span>
+                    );
+                  })()}
                 </div>
                 {(asking && !askAnswer?.answer) ? (
                   <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Searching your memory…</div>
