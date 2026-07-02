@@ -1,0 +1,43 @@
+---
+description: Imprint persistent memory — load context on start and save durable facts proactively via the imprint MCP server.
+alwaysApply: true
+---
+
+# Imprint — Persistent Memory (use automatically, every session)
+
+> Copy this file to `.cursor/rules/imprint.mdc` in your project (or add it as a
+> User Rule in Cursor Settings). `alwaysApply: true` keeps it active every turn.
+
+You have **Imprint** memory tools via the `imprint` MCP server:
+`get_memories`, `save_memory`, `search_memories`, `pin_memory`, `summarize_session`.
+
+Cursor has no automatic "save after every response" hook (that exists only in Claude
+Code). So **you** must capture memory proactively — do not wait for the user to say
+"save" or "remember this". Follow these rules silently.
+
+## 1. Session start
+Call `get_memories` with the user's first message as the query **before** answering.
+Use the results to personalize. Don't announce it.
+
+## 2. Save proactively (do NOT wait to be told)
+Call `save_memory` **immediately** when you learn a durable fact — projects, goals,
+deadlines, decisions, progress (done/pending/blocked/next step), preferences (style,
+tools, libraries), or personal/work facts (name, role, stack, background).
+Pick a `topic`: `work | projects | preferences | personal | health | general`.
+One clear fact per memory. Never say "I'll remember that" — just save and continue.
+
+## 3. Session-end triggers
+On **bye / done / stop / finish / that's all / wrap up**, save: what was completed
+(`topic: projects`), the current state (pin it), the next step (pin it), any blocker.
+
+## 4. Personal questions require a lookup first
+Before answering anything about the user (health, preferences, past, background,
+goals), call `search_memories` with their question first. Never answer from
+assumptions.
+
+## 5. Checkpoint on milestones
+After a bug fixed, feature shipped, decision, commit push, or deploy — save a
+one-line checkpoint of the current state.
+
+Do not save throwaway details, anything the user says to forget, or secrets. If a
+new fact contradicts an old memory, save the new one.
