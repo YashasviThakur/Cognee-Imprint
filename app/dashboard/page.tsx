@@ -2027,7 +2027,15 @@ export default function Dashboard() {
       const r = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ userId, content:newMemory.trim(), topic:newTopic, pinned:newPin, source:"manual" }) });
       if (!r.ok) throw new Error();
       const d = await r.json();
-      if (d.memory) { setMemories(p => [mapApi(d.memory), ...p]); pushToast("Memory added.", "success"); }
+      if (d.memory) {
+        setMemories(p => [mapApi(d.memory), ...p]);
+        // Surface the real Cognee Cloud ingest so the save visibly proves it hit Cognee.
+        const tr = d.memory.cogneeTrace as { ok?: boolean; dataset?: string; ms?: number } | undefined;
+        if (d.deduped) pushToast("Already in your memory — skipped duplicate.", "info");
+        else if (tr?.ok) pushToast(`⚡ Ingested into Cognee — ${tr.dataset}${tr.ms != null ? ` · ${tr.ms}ms` : ""}`, "success");
+        else if (tr && !tr.ok) pushToast("Saved locally — Cognee ingest will retry.", "info");
+        else pushToast("Memory added.", "success");
+      }
     } catch { loadMemories(true); pushToast("Couldn't add that memory — try again."); }
     setNewMemory(""); setNewTopic("general"); setNewPin(false); setShowAddModal(false);
   }
@@ -2773,6 +2781,9 @@ export default function Dashboard() {
                                       <span style={{ fontSize:9.5, color:tc, background:`${tc}15`, padding:"2px 7px", borderRadius:4, fontWeight:600 }}>{m.topic}</span>
                                       <span style={{ fontSize:9.5, color:"rgba(255,255,255,0.18)" }}>{timeAgo(new Date(m.createdAt))}</span>
                                       {m.source && <span title={`Captured via ${m.source}`} style={{ fontSize:9, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 6px", borderRadius:4, fontWeight:500 }}>{SOURCE_LABELS[m.source] || m.source}</span>}
+                                      {(() => { const cg = (m as any)._raw?.cogneeTrace; const cid = (m as any)._raw?.cogneeDataId; return (cid || cg?.ok) ? (
+                                        <span title={`In Cognee knowledge graph${cg?.dataset ? ` · ${cg.dataset}` : ""}${cid ? ` · id ${String(cid).slice(0,8)}` : ""}${cg?.ms != null ? ` · ${cg.ms}ms` : ""}`} style={{ fontSize:9, color:"#5EEAD4", background:"rgba(94,234,212,0.1)", border:"1px solid rgba(94,234,212,0.28)", padding:"2px 6px", borderRadius:4, fontWeight:600 }}>⚡ Cognee</span>
+                                      ) : null; })()}
                                       {(m.contradicts?.length || 0) > 0 && <span title="Conflicts with another memory" style={{ fontSize:9.5, color:"#f87171", background:"rgba(248,113,113,0.12)", padding:"2px 7px", borderRadius:4, fontWeight:600 }}>⚠ conflict</span>}
                                       {m.pinned && <span style={{ fontSize:10, color:"#f0b46a" }}>📌</span>}
                                     </div>
