@@ -27,6 +27,7 @@ import {
   cogneeImprove,
   cogneeForgetItem,
   cogneeGetDatasetByName,
+  cogneeBase,
   DEFAULT_SEARCH_TYPE,
   type CogneeSearchResult,
 } from "./cognee";
@@ -121,9 +122,13 @@ export async function saveMemory(
   if (!item.lesson && /^lesson\s*[—:-]/i.test(item.content || "")) item.lesson = true;
 
   // remember() into Cognee Cloud — this is what powers graph + semantic retrieval.
+  // We also record a transient trace of the real call so the UI can prove the save
+  // hit Cognee Cloud (dataset, data-id, latency, tenant host).
+  let cogneeTrace: Memory["cogneeTrace"];
   if (cogneeEnabled()) {
+    const ds = datasetForUser(memory.userId);
+    const t0 = Date.now();
     try {
-      const ds = datasetForUser(memory.userId);
       const nodeSet = [
         `topic:${memory.topic}`,
         memory.pinned ? "pinned:true" : "pinned:false",
@@ -132,6 +137,7 @@ export async function saveMemory(
       const rememberRes = await cogneeRemember(ds, memory.content, nodeSet);
       const dataId = extractDataId(rememberRes);
       if (dataId) item.cogneeDataId = dataId;
+      cogneeTrace = { ok: true, op: "remember", dataset: ds, dataId, ms: Date.now() - t0, host: cogneeBase() };
       // improve() the graph asynchronously (enrich/re-weight) so the save stays fast.
       cogneeImprove(ds).catch((e) =>
         console.error("[cognee] improve failed:", (e as Error).message)
@@ -139,11 +145,14 @@ export async function saveMemory(
     } catch (e) {
       // Cognee is the retrieval brain, but a transient remember() failure must not
       // lose the memory — it's still persisted locally below.
+      cogneeTrace = { ok: false, op: "remember", dataset: ds, ms: Date.now() - t0, host: cogneeBase(), error: (e as Error).message };
       console.error("[cognee] remember failed:", (e as Error).message);
     }
   }
 
   await lsPutMemory(memory.userId, item as unknown as Record<string, unknown>);
+  // Attach the trace AFTER persistence so it rides the response but is never stored.
+  if (cogneeTrace) item.cogneeTrace = cogneeTrace;
   return item;
 }
 

@@ -38,6 +38,17 @@ export interface Memory {
   // Cognee Cloud data-item id (returned by /api/v1/add) — lets us delete the
   // ingested document from the knowledge graph when the memory is deleted.
   cogneeDataId?: string;
+  // Transient proof-of-ingest attached to the SAVE response (never persisted):
+  // shows the real Cognee Cloud call the write made, for UI provenance.
+  cogneeTrace?: {
+    ok: boolean;
+    op?: string;        // "remember"
+    dataset?: string;   // imprint_<userId>
+    dataId?: string;    // Cognee data-item id (if the response exposed one)
+    ms?: number;        // round-trip latency of the ingest
+    host?: string;      // tenant data-plane host that served it
+    error?: string;
+  };
 
   // ── Learning subsystem ────────────────────────────────────────────────────
   // A "lesson" is a mistake→fix pair the assistant should not repeat.
