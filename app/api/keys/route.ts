@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ddb } from "@/lib/dynamodb";
 import { GetCommand, UpdateCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { requireOwner } from "@/lib/authz";
 import crypto from "crypto";
 
 const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || "imprint-users";
@@ -13,6 +14,8 @@ function userKey(userId: string) {
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const denied = await requireOwner(userId);
+  if (denied) return denied;
   const res = await ddb.send(new GetCommand({ TableName: USERS_TABLE, Key: userKey(userId) }));
   const key: string | undefined = res.Item?.imprintApiKey;
   if (!key) return NextResponse.json({ key: null, hasKey: false });
@@ -24,6 +27,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { userId } = await req.json();
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const denied = await requireOwner(userId);
+  if (denied) return denied;
   const raw = crypto.randomBytes(24).toString("hex");
   const key = `imp_live_${raw}`;
   await ddb.send(new UpdateCommand({
@@ -39,6 +44,8 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { userId } = await req.json();
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const denied = await requireOwner(userId);
+  if (denied) return denied;
   await ddb.send(new UpdateCommand({
     TableName: USERS_TABLE,
     Key: userKey(userId),

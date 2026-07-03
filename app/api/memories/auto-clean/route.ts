@@ -4,7 +4,7 @@ import { updateMemory, deleteMemory } from "@/lib/dynamodb";
 import type { Memory } from "@/lib/dynamodb";
 import { cosineSimilarity } from "@/lib/embeddings";
 import { llmComplete } from "@/lib/llm";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 // Automatic, conservative store cleanup (triggered in the background on dashboard
 // load). Safety rails: never deletes a PINNED memory; duplicates use a higher
@@ -29,10 +29,9 @@ function pickBest(cluster: Memory[]): Memory {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await req.json();
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
 
   try {
     const all = await getMemoryPool(userId, 2000);

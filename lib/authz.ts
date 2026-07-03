@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { getUserIdFromApiKey } from "@/app/api/keys/route";
 
 // Authorization helpers.
 //
@@ -33,4 +34,41 @@ export async function requireOwnerOrAdminKey(userId: string | null | undefined, 
   const adminKey = process.env.ADMIN_KEY;
   if (adminKey && typeof providedKey === "string" && providedKey === adminKey) return null;
   return requireOwner(userId);
+}
+
+// Canonical guard for MCP-shared routes that BOTH the dashboard and the MCP
+// server call (/api/memories CRUD, /api/rules, /api/sessions, /api/insights, …).
+// Resolves the authenticated userId without trusting a bare ?userId= param, so
+// it closes the "read any user's data by userId" hole while keeping keyed MCP
+// clients working. Resolution order:
+//   1. Authorization: Bearer imp_live_…  → per-user API key (MCP sends this when
+//      IMPRINT_API_KEY is set; see mcp/server.js apiFetch).
+//   2. NextAuth session cookie           → the signed-in dashboard user.
+//   3. LOCAL_MODE fallback               → trust `requested` (local Cognee demo
+//      only; never true on a STORAGE_BACKEND=dynamodb deploy).
+// `requested` is the userId the caller asked for (query or body). When present it
+// MUST match the resolved identity — a signed-in user cannot read another's data.
+// Returns the authorised userId, or null (→ respond with unauthorized()).
+export async function resolveUserId(req: NextRequest, requested?: string | null): Promise<string | null> {
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (bearer) {
+    const uid = await getUserIdFromApiKey(bearer);
+    if (!uid) return null;
+    return !requested || requested === uid ? uid : null;
+  }
+
+  const session = await auth();
+  const sid = session?.user?.id;
+  if (sid) return !requested || requested === sid ? sid : null;
+
+  if (LOCAL_MODE && requested) return requested;
+  return null;
+}
+
+// Standard 401 for an unauthenticated or mismatched caller.
+export function unauthorized(): NextResponse {
+  return NextResponse.json(
+    { error: "Unauthorized — sign in, or set IMPRINT_API_KEY in your MCP config" },
+    { status: 401 },
+  );
 }

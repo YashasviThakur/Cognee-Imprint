@@ -7,6 +7,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { LOCAL_MODE } from "@/lib/local-store";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 const client = DynamoDBDocumentClient.from(
   new DynamoDBClient({
@@ -22,8 +23,8 @@ const TABLE = process.env.DYNAMODB_MEMORIES_TABLE || "imprint-memories";
 
 // GET /api/sessions?userId=
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get("userId");
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const userId = await resolveUserId(req, req.nextUrl.searchParams.get("userId"));
+  if (!userId) return unauthorized();
 
   // Local mode: session history is a DynamoDB-only feature; return empty so the
   // isolated build never touches a real table.
@@ -62,8 +63,9 @@ export async function GET(req: NextRequest) {
 // POST /api/sessions — record a new session (called by the Stop hook)
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { userId, title, messageCount = 0, memoriesExtracted = 0 } = body;
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { title, messageCount = 0, memoriesExtracted = 0 } = body;
 
   const sessionId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
@@ -101,8 +103,10 @@ export async function POST(req: NextRequest) {
 // PATCH /api/sessions — update title or pin
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { userId, sessionId, startedAt, pinned, title } = body;
-  if (!userId || !sessionId || !startedAt) return NextResponse.json({ error: "userId, sessionId, startedAt required" }, { status: 400 });
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { sessionId, startedAt, pinned, title } = body;
+  if (!sessionId || !startedAt) return NextResponse.json({ error: "userId, sessionId, startedAt required" }, { status: 400 });
 
   const updateParts: string[] = [];
   const values: Record<string, boolean | string> = {};

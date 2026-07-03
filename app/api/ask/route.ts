@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { embed, cosineSimilarity } from "@/lib/embeddings";
 import { getMemoryPool } from "@/lib/pool";
 import { llmComplete } from "@/lib/llm";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 import { cogneeEnabled, datasetForUser, cogneeBase } from "@/lib/cognee";
 import { cogneeSemanticSearch, cogneeGraphAnswer } from "@/lib/memory-store";
 
@@ -24,11 +24,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const askCache = new Map<string, Cached>();
 
 export async function POST(req: NextRequest) {
-  const { userId, query } = await req.json();
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { query } = body;
   if (!query || !String(query).trim()) return NextResponse.json({ error: "query required" }, { status: 400 });
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
 
   const groqKey = process.env.GROQ_API_KEY;
   const q = String(query).trim();

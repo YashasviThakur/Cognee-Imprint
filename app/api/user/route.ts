@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser, updateUserApiKey, updateUserProfile } from "@/lib/dynamodb";
 import { encryptApiKey } from "@/lib/crypto";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 // GET /api/user?userId=
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get("userId");
-  if (!userId) {
-    return NextResponse.json({ error: "userId required" }, { status: 400 });
-  }
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
+  const userId = await resolveUserId(req, req.nextUrl.searchParams.get("userId"));
+  if (!userId) return unauthorized();
 
   try {
     const user = await getOrCreateUser(userId);
@@ -35,15 +31,11 @@ export async function GET(req: NextRequest) {
 // PATCH /api/user — update editable profile fields (name / image / age / role)
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { userId, name, image, age, role } = body as {
+  const { name, image, age, role } = body as {
     userId?: string; name?: string; image?: string; age?: string; role?: string;
   };
-
-  if (!userId) {
-    return NextResponse.json({ error: "userId required" }, { status: 400 });
-  }
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
+  const userId = await resolveUserId(req, (body as { userId?: string }).userId);
+  if (!userId) return unauthorized();
 
   // Guardrails so a giant image data: URL can't blow past the DynamoDB item limit.
   if (typeof image === "string" && image.length > 350_000) {
@@ -79,16 +71,17 @@ export async function PATCH(req: NextRequest) {
 
 // POST /api/user — save BYOK API key
 export async function POST(req: NextRequest) {
-  const { userId, apiKey } = await req.json();
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { apiKey } = body;
 
-  if (!userId || !apiKey) {
+  if (!apiKey) {
     return NextResponse.json(
       { error: "userId and apiKey required" },
       { status: 400 }
     );
   }
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
 
   if (!apiKey.startsWith("sk-ant-")) {
     return NextResponse.json(

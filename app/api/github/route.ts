@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveMemory } from "@/lib/dynamodb";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, githubToken, repo } = await req.json();
+    const body = await req.json();
+    const userId = await resolveUserId(req, body.userId);
+    if (!userId) return unauthorized();
+    const { githubToken, repo } = body;
 
-    if (!userId || !githubToken) {
+    if (!githubToken) {
       return NextResponse.json({ error: "userId and githubToken required" }, { status: 400 });
     }
 

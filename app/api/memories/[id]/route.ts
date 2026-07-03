@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateMemory, deleteMemory, Topic } from "@/lib/dynamodb";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -10,16 +10,16 @@ interface Params {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id: memoryId } = await params;
   const body = await req.json();
-  const { userId, createdAt, content, pinned, topic, tags, contradicts, conflictReasons } = body;
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { createdAt, content, pinned, topic, tags, contradicts, conflictReasons } = body;
 
-  if (!userId || !createdAt) {
+  if (!createdAt) {
     return NextResponse.json(
       { error: "userId and createdAt required" },
       { status: 400 }
     );
   }
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
 
   try {
     await updateMemory(userId, memoryId, createdAt, {
@@ -40,16 +40,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // DELETE /api/memories/[id]
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id: memoryId } = await params;
-  const { userId, createdAt } = await req.json();
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { createdAt } = body;
 
-  if (!userId || !createdAt) {
+  if (!createdAt) {
     return NextResponse.json(
       { error: "userId and createdAt required" },
       { status: 400 }
     );
   }
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
 
   try {
     await deleteMemory(userId, memoryId, createdAt);

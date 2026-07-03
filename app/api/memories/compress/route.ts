@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMemories, saveMemory, deleteMemory, Topic } from "@/lib/dynamodb";
 import { compressMemories } from "@/lib/compress";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 // POST /api/memories/compress
 // Body: { userId, topic, groqApiKey? }
 // Fetches all unpinned memories for the topic, compresses them into one sentence,
 // deletes the originals, and saves the compressed memory.
 export async function POST(req: NextRequest) {
-  const { userId, topic, groqApiKey } = await req.json();
-  if (!userId || !topic) {
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { topic, groqApiKey } = body;
+  if (!topic) {
     return NextResponse.json({ error: "userId and topic required" }, { status: 400 });
   }
 

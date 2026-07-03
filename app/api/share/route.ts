@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMemories, getOrCreateUser } from "@/lib/dynamodb";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 import crypto from "crypto";
 
 const SHARE_SECRET = process.env.SHARE_SECRET || process.env.ENCRYPTION_SECRET || "imprint-share-secret-2026";
@@ -17,10 +18,13 @@ export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   const userId = req.nextUrl.searchParams.get("userId");
 
-  // If userId provided directly (for generating the token)
+  // If userId provided directly (for generating the token). Verify the caller
+  // owns this userId before minting a share token for their memories.
   if (userId && !token) {
-    const t = makeToken(userId);
-    return NextResponse.json({ token: t, shareUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://imprint-ebon.vercel.app"}/share/${t}?uid=${encodeURIComponent(userId)}` });
+    const owner = await resolveUserId(req, userId);
+    if (!owner) return unauthorized();
+    const t = makeToken(owner);
+    return NextResponse.json({ token: t, shareUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://imprint-ebon.vercel.app"}/share/${t}?uid=${encodeURIComponent(owner)}` });
   }
 
   // If resolving a shared link

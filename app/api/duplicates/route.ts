@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMemoryPool } from "@/lib/pool";
 import { cosineSimilarity } from "@/lib/embeddings";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 // Finds clusters of near-duplicate memories (same fact saved/extracted more than
 // once, often slightly reworded). Greedy clustering by embedding cosine ≥ 0.9.
@@ -11,10 +11,9 @@ export const maxDuration = 30;
 const DUP_THRESHOLD = 0.9;
 
 export async function POST(req: NextRequest) {
-  const { userId } = await req.json();
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
-  const denied = await requireOwner(userId);
-  if (denied) return denied;
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
 
   try {
     const all = await getMemoryPool(userId, 1000);

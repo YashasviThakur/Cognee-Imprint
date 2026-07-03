@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMemories, updateMemory } from "@/lib/dynamodb";
 import { embed, cosineSimilarity } from "@/lib/embeddings";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 // POST /api/memories/natural-update
 // Body: { userId, instruction, groqApiKey? }
@@ -9,8 +10,11 @@ import { embed, cosineSimilarity } from "@/lib/embeddings";
 // 3. Ask Groq which ones to update and what the new content should be
 // 4. Patch those memories in DynamoDB
 export async function POST(req: NextRequest) {
-  const { userId, instruction, groqApiKey } = await req.json();
-  if (!userId || !instruction?.trim()) {
+  const body = await req.json();
+  const userId = await resolveUserId(req, body.userId);
+  if (!userId) return unauthorized();
+  const { instruction, groqApiKey } = body;
+  if (!instruction?.trim()) {
     return NextResponse.json({ error: "userId and instruction required" }, { status: 400 });
   }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser, getMemories } from "@/lib/dynamodb";
 import { decryptApiKey } from "@/lib/crypto";
-import { requireOwner } from "@/lib/authz";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 function buildSystemPrompt(memories: { topic: string; content: string; pinned: boolean }[]): string {
   if (!memories.length) {
@@ -37,13 +37,10 @@ function buildSystemPrompt(memories: { topic: string; content: string; pinned: b
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, userId } = await req.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: "userId required" }, { status: 400 });
-    }
-    const denied = await requireOwner(userId);
-    if (denied) return denied;
+    const body = await req.json();
+    const userId = await resolveUserId(req, body.userId);
+    if (!userId) return unauthorized();
+    const { messages } = body;
 
     const user = await getOrCreateUser(userId);
 

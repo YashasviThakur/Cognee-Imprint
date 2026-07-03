@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveMemory } from "@/lib/dynamodb";
 import { extractMemories } from "@/lib/extract";
+import { resolveUserId, unauthorized } from "@/lib/authz";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 
@@ -8,9 +9,10 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const audio    = formData.get("audio") as File | null;
-    const userId   = formData.get("userId") as string;
+    const userId = await resolveUserId(req, formData.get("userId") as string | null);
+    if (!userId) return unauthorized();
 
-    if (!audio || !userId) {
+    if (!audio) {
       return NextResponse.json({ error: "audio and userId required" }, { status: 400 });
     }
 
