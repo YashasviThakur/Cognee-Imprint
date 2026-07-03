@@ -1016,11 +1016,22 @@ const CONNECT_TABS: ConnectTab[] = [
 // node. The bootstrap contains no "!", no inner quotes, and no $HOME/%USERPROFILE%
 // differences, so it behaves identically in zsh, bash, PowerShell and cmd.exe.
 const RAW_BASE = "https://raw.githubusercontent.com/ayushraj-byte/Cognee-Imprint/main/mcp";
+// Backend the generated configs/installer point at. install.cjs defaults to
+// http://localhost:3000 (safe for random clones), but a user configuring from THIS
+// hosted dashboard wants their live deployment — so we inject it explicitly below.
+const APP_BASE = "https://cognee-imprint.vercel.app";
 
 // Build the bootstrap one-liner. `scriptUrl` is fetched to os.tmpdir() then executed
 // with `args` appended. `args` is rendered as JS string literals (e.g. "'cursor'").
-function makeBootstrap(scriptUrl: string, tmpName: string, args: string[]): string {
+// `env` (optional) is injected into the child's environment — used to pass
+// IMPRINT_API_BASE so install.cjs writes the live backend, not its localhost default.
+function makeBootstrap(scriptUrl: string, tmpName: string, args: string[], env?: Record<string, string>): string {
   const argList = args.join(",");
+  // Single-quoted literals only (no double quotes, no "!") to stay shell-safe.
+  const envEntries = env ? Object.entries(env).map(([k, v]) => `${k}:'${v}'`).join(",") : "";
+  const execOpts = envEntries
+    ? `{stdio:'inherit',env:Object.assign({},process.env,{${envEntries}})}`
+    : `{stdio:'inherit'}`;
   return (
     `node -e "` +
     `const https=require('https'),os=require('os'),p=require('path'),f=require('fs'),cp=require('child_process');` +
@@ -1028,7 +1039,7 @@ function makeBootstrap(scriptUrl: string, tmpName: string, args: string[]): stri
     `https.get('${scriptUrl}',res=>{` +
     `if((res.statusCode===200)===false){console.error('Download failed: HTTP '+res.statusCode);process.exit(1);}` +
     `const w=f.createWriteStream(dst);res.pipe(w);` +
-    `w.on('close',()=>cp.execFileSync(process.execPath,[dst,${argList}],{stdio:'inherit'}));` +
+    `w.on('close',()=>cp.execFileSync(process.execPath,[dst,${argList}],${execOpts}));` +
     `}).on('error',e=>{console.error('Download failed: '+e.message);process.exit(1);});"`
   );
 }
@@ -1037,7 +1048,8 @@ function makeBootstrap(scriptUrl: string, tmpName: string, args: string[]): stri
 function makeAutoScript(pathParts: string[], uid: string, platform: string, format: "json" | "toml" = "json"): string {
   const segs = pathParts.map(seg => `'${seg}'`);
   return makeBootstrap(`${RAW_BASE}/install.cjs`, "imprint-install.cjs",
-    [`'${platform}'`, `'${uid}'`, `'${format}'`, ...segs]);
+    [`'${platform}'`, `'${uid}'`, `'${format}'`, ...segs],
+    { IMPRINT_API_BASE: APP_BASE });
 }
 
 // Uninstall: download + run mcp/uninstall.js with <format> <pathSegs…>.
