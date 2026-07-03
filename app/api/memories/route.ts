@@ -7,7 +7,6 @@ import { getMemoryPool, invalidateMemoryPool } from "@/lib/pool";
 import { embed, cosineSimilarity } from "@/lib/embeddings";
 import { optimizeContext } from "@/lib/context-optimizer";
 import { cogneeSemanticSearch, recordFeedback, supersedeMemory } from "@/lib/memory-store";
-import { resolveUserId, unauthorized } from "@/lib/authz";
 import type { Memory } from "@/lib/dynamodb";
 
 // Merge all pinned memories into a result set (pinned first, de-duplicated by id).
@@ -74,14 +73,14 @@ async function autoTagProject(userId: string, content: string, topic: string, ex
 
 // GET /api/memories?userId=&topic=&search=&semantic=
 export async function GET(req: NextRequest) {
-  const userId = await resolveUserId(req, req.nextUrl.searchParams.get("userId"));
+  const userId = req.nextUrl.searchParams.get("userId");
   const topic = req.nextUrl.searchParams.get("topic") as Topic | null;
   const search   = req.nextUrl.searchParams.get("search");
   const semantic = req.nextUrl.searchParams.get("semantic");
   const optimize = req.nextUrl.searchParams.get("optimize") === "true";
   const budget   = parseInt(req.nextUrl.searchParams.get("budget") || "2000");
   const limit    = Math.min(parseInt(req.nextUrl.searchParams.get("limit") || "50"), 2000);
-  if (!userId) return unauthorized();
+  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
   try {
     // Semantic search — powered by Cognee Cloud's knowledge graph. Cognee finds
@@ -116,9 +115,8 @@ export async function GET(req: NextRequest) {
 // Batch extraction: { userId, messages, source, groqApiKey }
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const userId = await resolveUserId(req, body.userId);
-  if (!userId) return unauthorized();
-  const { content, topic, pinned, messages, source, groqApiKey, lesson, mistake, fix } = body;
+  const { userId, content, topic, pinned, messages, source, groqApiKey, lesson, mistake, fix } = body;
+  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
   try {
     // Direct single-memory save (from MCP)
@@ -283,11 +281,8 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/memories — update pinned/content/topic/tags
 export async function PATCH(req: NextRequest) {
-  const body = await req.json();
-  const userId = await resolveUserId(req, body.userId);
-  if (!userId) return unauthorized();
-  const { memoryId, createdAt, pinned, content, topic, tags, feedback, supersededBy } = body;
-  if (!memoryId) {
+  const { userId, memoryId, createdAt, pinned, content, topic, tags, feedback, supersededBy } = await req.json();
+  if (!userId || !memoryId) {
     return NextResponse.json({ error: "userId, memoryId required" }, { status: 400 });
   }
   try {
@@ -320,11 +315,10 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE /api/memories?userId=&memoryId=&createdAt=
 export async function DELETE(req: NextRequest) {
-  const userId = await resolveUserId(req, req.nextUrl.searchParams.get("userId"));
-  if (!userId) return unauthorized();
+  const userId = req.nextUrl.searchParams.get("userId");
   const memoryId = req.nextUrl.searchParams.get("memoryId");
   const createdAt = req.nextUrl.searchParams.get("createdAt");
-  if (!memoryId || !createdAt) {
+  if (!userId || !memoryId || !createdAt) {
     return NextResponse.json({ error: "userId, memoryId, createdAt required" }, { status: 400 });
   }
   try {
