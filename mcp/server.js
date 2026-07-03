@@ -9,7 +9,9 @@ import { z } from "zod";
 // to your own deployment (e.g. https://your-app.vercel.app) if you self-host.
 const API_BASE = process.env.IMPRINT_API_BASE || "http://localhost:3000";
 const API_KEY  = process.env.IMPRINT_API_KEY;   // secure path (revocable)
-const CACHE_TTL_MS = 60_000;
+// Read cache lifetime. Lower = memories saved in ANOTHER IDE show up here sooner
+// (cross-IDE sync latency), at the cost of more API reads. Tune via env.
+const CACHE_TTL_MS = Number(process.env.IMPRINT_CACHE_TTL_MS) || 15_000;
 const REQUEST_TIMEOUT_MS = 15_000;  // abort a request that hangs (e.g. Vercel cold start)
 const MAX_ATTEMPTS = 3;             // total attempts before surfacing the error
 
